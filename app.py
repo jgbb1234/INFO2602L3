@@ -30,23 +30,118 @@ CORS(app)
 
 jwt = JWTManager(app)
 
+
+def login_user(username, password):
+  user = User.query.filter_by(username=username).first()
+  if user and user.check_password(password):
+    token = create_access_token(identity=username)
+    response = jsonify(access_token=token)
+    set_access_cookies(response, token)
+    return response
+  return jsonify(message="Invalid username or password"), 401
+
+
 # customn decorator authorize routes for admin or regular user
 def login_required(required_class):
+
   def wrapper(f):
-      @wraps(f)
-      @jwt_required()  # Ensure JWT authentication
-      def decorated_function(*args, **kwargs):
-        user = required_class.query.filter_by(username=get_jwt_identity()).first()  
-        print(user.__class__, required_class, user.__class__ == required_class)
-        if user.__class__ != required_class:  # Check class equality
-            return jsonify(message='Invalid user role'), 403
-        return f(*args, **kwargs)
-      return decorated_function
+
+    @wraps(f)
+    @jwt_required()  # Ensure JWT authentication
+    def decorated_function(*args, **kwargs):
+      user = required_class.query.filter_by(
+          username=get_jwt_identity()).first()
+      print(user.__class__, required_class, user.__class__ == required_class)
+      if user.__class__ != required_class:  # Check class equality
+        return jsonify(message='Invalid user role'), 403
+      return f(*args, **kwargs)
+
+    return decorated_function
+
   return wrapper
+
 
 @app.route('/')
 def index():
   return '<h1>mY Todo API</h1>'
+
+
+@app.route('/identify')
+@jwt_required()
+def identify_view():
+  username = get_jwt_identity()
+  user = User.query.filter_by(username=username).first()
+  if user:
+    return jsonify(user.get_json())
+  return jsonify(message='Invalid user'), 403
+
+@app.route('/logout', methods=['GET'])
+def logout():
+  response = jsonify(message='Logged out')
+  unset_jwt_cookies(response)
+  return response
+
+@app.route('/signup', methods=['POST'])
+def signup_user_view():
+  data = request.json
+  try:
+    new_user = RegularUser(data['username'], data['email'], data['password'])
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify(message=f'User {new_user.id} - {new_user.username} created!'), 201
+  except IntegrityError:
+    db.session.rollback()
+    return jsonify(message='Username already exists'), 400
+
+
+@app.route('/todos', methods=['GET'])
+@jwt_required()
+def get_todos_view():
+  # get the user object of the authenticated user
+  user = RegularUser.query.filter_by(username=get_jwt_identity()).first()
+  # converts todo objects to list of todo dictionaries
+  todo_json = [ todo.get_json() for todo in user.todos ]
+  return jsonify(todo_json), 200
+
+@app.route('/todos/<int:id>', methods=['GET'])
+@jwt_required()
+def get_todo_view(id):
+  todo = Todo.query.get(id)
+
+  # must check if todo belongs to the authenticated user
+  if not todo or todo.user.username != get_jwt_identity():
+    return jsonify(error="Bad ID or unauthorized"), 401
+
+  return jsonify(todo.get_json()), 200
+
+@app.route('/todos/<int:id>', methods=['PUT'])
+@login_required(RegularUser)
+def edit_todo_view(id):
+  data = request.json
+  user = RegularUser.query.filter_by(username=get_jwt_identity()).first()
+
+  todo = Todo.query.get(id)
+
+  # must check if todo belongs to the authenticated user
+  if not todo or todo.user.username != get_jwt_identity():
+    return jsonify(error="Bad ID or unauthorized"), 401
+
+  user.update_todo(id, data['text'])
+  return jsonify(message=f"todo updated to '{data['text']}'!"), 200
+
+@app.route('/todos/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_todo_view(id):
+  user = RegularUser.query.filter_by(username=get_jwt_identity()).first()
+  todo = Todo.query.get(id)
+
+  # must check if todo belongs to the authenticated user
+  if not todo or todo.user.username != get_jwt_identity():
+    return jsonify(error="Bad ID or unauthorized"), 401
+
+  user.delete_todo(id)
+  return jsonify(message="todo deleted!"), 200
+
 
 # Task 3.1 Here
 
@@ -60,7 +155,6 @@ def index():
 
 # ********** Todo Crud Operations ************
 
-
 # Task 5.1 Here POST /todos
 
 # Task 5.2 Here GET /todos
@@ -70,6 +164,7 @@ def index():
 # Task 5.4 Here PUT /todos/id
 
 # Task 5.5 Here DELETE /todos/id
+
 
 @app.route('/todos/stats', methods=['GET'])
 @login_required(RegularUser)

@@ -11,11 +11,12 @@ db.init_app(app)
 def initialize():
   db.drop_all()
   db.create_all()
- 
+
   bob = RegularUser('bob', 'bob@mail.com', 'bobpass')
   rick = RegularUser('rick', 'rick@mail.com', 'rickpass')
   sally = RegularUser('sally', 'sally@mail.com', 'sallypass')
-  db.session.add_all([bob, rick, sally])  #add all can save multiple objects at once
+  db.session.add_all([bob, rick,
+                      sally])  #add all can save multiple objects at once
   db.session.commit()
   #load todo data from csv file
   with open('todos.csv') as file:
@@ -29,6 +30,15 @@ def initialize():
     db.session.commit()
     #save all changes OUTSIDE the loop
   print('database intialized')
+
+
+@app.route('/login', methods=['POST'])
+def user_login_view():
+  data = request.json
+  response = login_user(data['username'], data['password'])
+  if not response:
+    return jsonify(message='bad username or password given'), 403
+  return response
 
 
 @app.cli.command("get-user", help="Retrieves a User by username or id")
