@@ -11,34 +11,22 @@ db.init_app(app)
 def initialize():
   db.drop_all()
   db.create_all()
-
   bob = RegularUser('bob', 'bob@mail.com', 'bobpass')
   rick = RegularUser('rick', 'rick@mail.com', 'rickpass')
   sally = RegularUser('sally', 'sally@mail.com', 'sallypass')
-  db.session.add_all([bob, rick,
-                      sally])  #add all can save multiple objects at once
+  pam = Admin('1123', 'pam', 'pam@mail.com', 'pampass')
+  db.session.add_all([bob, rick, sally,
+                      pam])  
   db.session.commit()
-  #load todo data from csv file
   with open('todos.csv') as file:
     reader = csv.DictReader(file)
     for row in reader:
-      new_todo = Todo(text=row['text'])  #create object
-      #update fields based on records
+      new_todo = Todo(text=row['text']) 
       new_todo.done = True if row['done'] == 'true' else False
       new_todo.user_id = int(row['user_id'])
-      db.session.add(new_todo)  #queue changes for saving
+      db.session.add(new_todo)
     db.session.commit()
-    #save all changes OUTSIDE the loop
   print('database intialized')
-
-
-@app.route('/login', methods=['POST'])
-def user_login_view():
-  data = request.json
-  response = login_user(data['username'], data['password'])
-  if not response:
-    return jsonify(message='bad username or password given'), 403
-  return response
 
 
 @app.cli.command("get-user", help="Retrieves a User by username or id")
@@ -169,7 +157,6 @@ def add_todo_category_command(
 
 @app.cli.command('list-todos')
 def list_todos():
-  #tabulate package needs to work with an array of arrays
   data = []
   for todo in Todo.query.all():
     data.append(
